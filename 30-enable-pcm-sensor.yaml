@@ -1,0 +1,56 @@
+- name: Install and Enable PCM Sensor Server
+  hosts: localhost
+  become: true
+  environment:
+    DEBIAN_FRONTEND: "noninteractive"
+
+  vars:
+    package_list:
+      - pcm
+    pcm_service: "pcm-sensor-server"
+    pcm_unit_path: "/etc/systemd/system/pcm-sensor-server.service"
+
+  tasks:
+    - name: Install PCM package
+      apt:
+        name: "{{ package_list }}"
+        state: present
+        update_cache: yes
+      register: pcm_install
+      until: pcm_install is succeeded
+      retries: 3
+      delay: 5
+
+    - name: Create systemd unit file for PCM Sensor Server
+      copy:
+        dest: "{{ pcm_unit_path }}"
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Intel Performance Counter Monitor (PCM) Sensor Service
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          Type=simple
+          User=root
+          Group=root
+          ExecStartPre=/sbin/modprobe msr
+          ExecStart=/usr/sbin/pcm-sensor-server
+          Restart=on-failure
+          RestartSec=30
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start PCM Sensor Server
+      systemd:
+        name: "{{ pcm_service }}"
+        enabled: yes
+        state: restarted
